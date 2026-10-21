@@ -1,0 +1,60 @@
+name: Publish RectXP
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and validate only (no upload)'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  package-and-publish:
+    runs-on: ubuntu-latest
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_KEY }}
+      CF_PROJECT_ID: '1757695'
+      GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "$CF_PROJECT_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid CF_PROJECT_ID."
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == "push" || "${{ inputs.dry_run }}" == "false" ]]; then
+            if [[ -z "$CF_API_TOKEN" ]]; then
+              echo "::error::Missing CF_API_KEY GitHub Actions secret."
+              exit 1
+            fi
+          fi
+
+      - name: Prepare packager working directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s RectXP/RectXP.lua
+          test -s RectXP/RectXP.toc
+          cp -a RectXP/. ./
+          rm -rf RectXP
+          test -s RectXP.lua
+          test -s RectXP.toc
+
+      - name: Package and publish
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -p 1757695 ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '-d' || '' }}
